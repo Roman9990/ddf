@@ -74,17 +74,17 @@
 
         .admins-grid{
             display:grid;
-            grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+            grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
             gap:20px;
             width:100%;
-            max-width:800px;
+            max-width:900px;
             margin:0 auto
         }
 
         .admin-card{
             background: rgba(255,255,255,0.1);
             backdrop-filter: blur(20px);
-            border: 1px solid rgba(255,255,255,0.2);
+            border: 2px solid rgba(255,255,255,0.2);
             border-radius: 20px;
             padding: 24px;
             position: relative;
@@ -106,9 +106,15 @@
         }
 
         .admin-card:hover {
-            transform: translateY(-10px) scale(1.02);
-            box-shadow: 0 15px 35px rgba(0,0,0,0.1);
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
             border-color: rgba(255,255,255,0.4);
+        }
+
+        .admin-card.selected {
+            border-color: #00f2fe;
+            background: rgba(0,242,254,0.1);
+            transform: scale(1.05);
         }
 
         .admin-card::before {
@@ -200,7 +206,10 @@
         .admin-stats {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 15px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 15px;
         }
 
         .stat-item {
@@ -228,7 +237,55 @@
             font-size: 12px;
             text-align: center;
             text-transform: uppercase;
-            margin-top: 10px;
+            margin-bottom: 15px;
+        }
+
+        /* КНОПКА ВЫБОРА - ЭТО БЫЛО ГЛАВНОЙ ПРОБЛЕМОЙ! */
+        .select-btn {
+            width: 100%;
+            padding: 15px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 15px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .select-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transition: left 0.3s ease;
+        }
+
+        .select-btn:hover {
+            background: linear-gradient(135deg, #5a67d8 0%, #667eea 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102,126,234,0.4);
+        }
+
+        .select-btn:hover::before {
+            left: 100%;
+        }
+
+        .select-btn:active {
+            transform: translateY(0);
+        }
+
+        .select-btn.loading {
+            background: #95a5a6;
+            cursor: not-allowed;
         }
 
         .empty-illustration{
@@ -275,11 +332,23 @@
             100% { transform: rotate(360deg); }
         }
 
+        /* Эффект выбора */
+        @keyframes selectPulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .admin-card.selecting {
+            animation: selectPulse 0.3s ease-in-out;
+        }
+
         @media (max-width:768px){
             .app-container{padding:15px}
             .gradient-title{font-size:24px}
             .admins-grid{grid-template-columns:1fr;gap:15px}
             .admin-card{padding:20px}
+            .admin-stats{flex-direction:column;gap:10px}
         }
     </style>
 </head>
@@ -315,6 +384,7 @@
                 this.admins = [];
                 this.user = null;
                 this.config = {};
+                this.selectedAdmin = null;
                 this.startLoading();
 
                 // Инициализация Telegram WebApp
@@ -365,7 +435,23 @@
                             config: this.config 
                         });
                     } else {
-                        console.log('ℹ️ No data param in URL - showing empty state');
+                        console.log('ℹ️ No data param in URL - showing test admins');
+                        // Для тестирования добавляем тестовых админов
+                        this.admins = [
+                            {
+                                id: 5518423575,
+                                tag: "roman",
+                                role: "owner",
+                                status: "online",
+                                accent_color: "#667eea",
+                                rating: 5.0,
+                                specialization: "Все вопросы",
+                                response_time: "2 мин",
+                                dialogs_count: 156,
+                                avatar: "👑"
+                            }
+                        ];
+                        this.user = { id: 123456789 };
                     }
 
                     this.renderAdmins();
@@ -401,6 +487,7 @@
                 const card = document.createElement('div');
                 card.className = 'admin-card';
                 card.style.animationDelay = `${index * 0.1}s`;
+                card.dataset.adminId = admin.id;
 
                 const isOnline = admin.status === 'online';
                 const statusText = isOnline ? 'Онлайн' : 'Оффлайн';
@@ -413,6 +500,8 @@
                             ${admin.avatar || '👨‍💼'}
                         </div>
                         <h3 class="admin-tag">#${admin.tag}</h3>
+
+                        <div class="admin-role">${admin.role || 'Администратор'}</div>
 
                         <div class="admin-info">
                             <div class="admin-specialization">🎯 ${admin.specialization || 'Общие вопросы'}</div>
@@ -438,24 +527,46 @@
                             <span class="status-text">${statusText}</span>
                         </div>
 
-                        <div class="admin-role">${admin.role || 'Администратор'}</div>
+                        <button class="select-btn" onclick="selectAdmin(${admin.id}, '${admin.tag}')">
+                            💬 Выбрать администратора
+                        </button>
                     </div>
                 `;
 
-                card.addEventListener('click', (e) => this.handleAdminClick(admin, e));
                 return card;
             }
 
-            handleAdminClick(admin, event) {
+            handleAdminClick(adminId, adminTag) {
                 try {
-                    // Создаем ripple эффект
-                    this.createRipple(event.currentTarget, event);
+                    const admin = this.admins.find(a => a.id == adminId);
+                    if (!admin) {
+                        console.error('Admin not found:', adminId);
+                        return;
+                    }
+
+                    // Визуальная обратная связь
+                    const card = document.querySelector(`[data-admin-id="${adminId}"]`);
+                    const button = card.querySelector('.select-btn');
+
+                    if (card && button) {
+                        // Отключаем кнопку
+                        button.disabled = true;
+                        button.classList.add('loading');
+                        button.innerHTML = '⏳ Отправка запроса...';
+
+                        // Анимация карточки
+                        card.classList.add('selecting');
+
+                        setTimeout(() => {
+                            card.classList.remove('selecting');
+                        }, 300);
+                    }
 
                     // Данные для отправки в бот
                     const selectionData = { 
                         action: 'select_admin', 
-                        admin_id: admin.id, 
-                        admin_tag: admin.tag,
+                        admin_id: adminId, 
+                        admin_tag: adminTag,
                         user_id: this.user?.id 
                     };
 
@@ -464,43 +575,41 @@
                     if (window.Telegram && window.Telegram.WebApp) {
                         window.Telegram.WebApp.sendData(JSON.stringify(selectionData));
                         console.log('📤 Data sent to Telegram');
+
+                        // Показываем успех
+                        setTimeout(() => {
+                            if (button) {
+                                button.innerHTML = '✅ Запрос отправлен!';
+                                button.style.background = '#2ecc71';
+                            }
+                        }, 500);
+
                     } else {
                         console.log('⚠️ Telegram WebApp not available - test mode');
-                        alert(`Выбран администратор: #${admin.tag} (${admin.role})`);
+                        alert(`✅ Выбран администратор: #${adminTag} (${admin.role})\n\nВ реальном боте здесь начался бы диалог.`);
+
+                        // Восстанавливаем кнопку в тестовом режиме
+                        setTimeout(() => {
+                            if (button) {
+                                button.disabled = false;
+                                button.classList.remove('loading');
+                                button.innerHTML = '💬 Выбрать администратора';
+                            }
+                        }, 2000);
                     }
                 } catch (error) {
                     console.error('Error handling admin selection:', error);
-                    alert('Ошибка при выборе администратора');
-                }
-            }
+                    alert('❌ Ошибка при выборе администратора');
 
-            createRipple(element, event) {
-                const rect = element.getBoundingClientRect();
-                const size = Math.max(rect.width, rect.height);
-                const x = event.clientX - rect.left - size / 2;
-                const y = event.clientY - rect.top - size / 2;
-
-                const ripple = document.createElement('span');
-                ripple.style.cssText = `
-                    position: absolute;
-                    border-radius: 50%;
-                    background: rgba(255,255,255,0.4);
-                    transform: scale(0);
-                    animation: ripple-animation 0.6s linear;
-                    pointer-events: none;
-                    width: ${size}px;
-                    height: ${size}px;
-                    left: ${x}px;
-                    top: ${y}px;
-                `;
-
-                element.appendChild(ripple);
-
-                setTimeout(() => {
-                    if (ripple.parentNode) {
-                        ripple.parentNode.removeChild(ripple);
+                    // Восстанавливаем кнопку при ошибке
+                    const card = document.querySelector(`[data-admin-id="${adminId}"]`);
+                    const button = card?.querySelector('.select-btn');
+                    if (button) {
+                        button.disabled = false;
+                        button.classList.remove('loading');
+                        button.innerHTML = '💬 Выбрать администратора';
                     }
-                }, 600);
+                }
             }
 
             showEmptyState() {
@@ -510,10 +619,21 @@
             }
         }
 
+        // Глобальная функция для выбора админа
+        let supportCenter = null;
+
+        function selectAdmin(adminId, adminTag) {
+            if (supportCenter) {
+                supportCenter.handleAdminClick(adminId, adminTag);
+            } else {
+                console.error('SupportCenter not initialized');
+            }
+        }
+
         // Запускаем приложение
         document.addEventListener('DOMContentLoaded', () => {
             console.log('🚀 Starting Support Center App');
-            new SupportCenter();
+            supportCenter = new SupportCenter();
         });
 
         // Добавляем CSS для ripple анимации
